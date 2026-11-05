@@ -1,0 +1,19 @@
+# Binaries
+syncfault
+*.exe
+*.out
+*.test
+
+# Run artifacts and local databases
+runs.db
+runs.db-journal
+runs.db-wal
+runs.db-shm
+report/
+.syncfault-runs/
+
+# OS & editor files
+.DS_Store
+*.swp
+.idea/
+.vscode/
