@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>SyncFault — Deterministic Fault-Injection Harness for File Sync</title>
+  <meta name="description" content="Catch silent data loss in file-synchronization tools before your users do. Seeded fault injection and byte-level verification in Go.">
+
+  <!-- Distinctive Typography: Newsreader (Editorial Serif) + Manrope (UI Sans) + IBM Plex Mono (Code) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,400;0,500;0,600;1,400&family=Manrope:wght@400;500;600;700&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            cream: {
+              50: '#FCFBF9',
+              100: '#FAF7F2',
+              200: '#F2ECE1',
+              300: '#E4DBC9',
+              400: '#C9BTA6',
+            },
+            ink: {
+              900: '#161514',
+              700: '#3B3834',
+              500: '#656059',
+              400: '#8C857B',
+            },
+            vermilion: {
+              600: '#C83E2B',
+              700: '#A93020',
+              50: '#FDF3F1',
+            },
+            forest: {
+              700: '#1F5E3B',
+              50: '#EFF7F2',
+            }
+          },
+          fontFamily: {
+            serif: ['"Newsreader"', 'Georgia', 'serif'],
+            sans: ['"Manrope"', 'system-ui', 'sans-serif'],
+            mono: ['"IBM Plex Mono"', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #FAF7F2;
+      color: #161514;
+      font-family: 'Manrope', system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Subtle warm archival paper grain + hairline grid */
+    .paper-grid {
+      background-size: 48px 48px;
+      background-image:
+        linear-gradient(to right, rgba(22, 21, 20, 0.035) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(22, 21, 20, 0.035) 1px, transparent 1px);
+    }
+
+    @keyframes fadeUp {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+      .animate-fade-up {
+        animation: fadeUp 0.55s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      }
+      .delay-1 { animation-delay: 0.08s; opacity: 0; }
+      .delay-2 { animation-delay: 0.16s; opacity: 0; }
+      .delay-3 { animation-delay: 0.24s; opacity: 0; }
+    }
+  </style>
+</head>
+<body class="selection:bg-vermilion-600 selection:text-white">
+
+  <!-- 1. Modern Minimal Navigation Bar -->
+  <header class="sticky top-0 z-40 border-b border-cream-300 bg-cream-100/90 backdrop-blur-md">
+    <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+      <a href="#" class="flex items-center gap-3 group">
+        <span class="flex h-7 w-7 items-center justify-center rounded border border-ink-900 bg-ink-900 font-mono text-xs font-semibold text-cream-100 transition-colors group-hover:bg-vermilion-600 group-hover:border-vermilion-600">
+          SF
+        </span>
+        <span class="font-serif text-xl font-medium tracking-tight text-ink-900">SyncFault</span>
+        <span class="hidden rounded-full border border-cream-300 bg-cream-200 px-2 py-0.5 font-mono text-[11px] text-ink-500 sm:inline-block">
+          v1.0 &middot; Go 1.22+
+        </span>
+      </a>
+
+      <nav class="hidden items-center gap-8 text-sm font-medium text-ink-700 md:flex">
+        <a href="#architecture" class=" transition-colors hover:text-ink-900">Architecture</a>
+        <a href="#features" class="transition-colors hover:text-ink-900">Why It Works</a>
+        <a href="#quickstart" class="transition-colors hover:text-ink-900">Quickstart</a>
+        <a href="#faq" class="transition-colors hover:text-ink-900">FAQ</a>
+      </nav>
+
+      <a href="https://github.com/Vishv07/syncfault" target="_blank" rel="noopener noreferrer"
+         class="inline-flex items-center gap-2.5 rounded-md border border-ink-900/20 bg-cream-50 px-3.5 py-1.5 text-xs font-semibold text-ink-900 shadow-sm transition-all hover:border-ink-900 hover:bg-white">
+        <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+          <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+        </svg>
+        <span>Vishv07/syncfault</span>
+        <span class="border-l border-cream-300 pl-2 font-mono text-[11px] text-ink-500" id="ghStars">★ Star</span>
+      </a>
+    </div>
+  </header>
+
+  <main>
+    <!-- 2. Hero Section (50% Visual Effort) -->
+    <section class="paper-grid relative border-b border-cream-300 pt-16 pb-20 md:pt-24 md:pb-28">
+      <div class="mx-auto max-w-6xl px-6">
+        <div class="mx-auto max-w-3xl text-center">
+          <div class="animate-fade-up inline-flex items-center gap-2 rounded-full border border-cream-300 bg-cream-50 px-3.5 py-1 font-mono text-xs text-ink-700 mb-6">
+            <span class="h-2 w-2 rounded-full bg-vermilion-600"></span>
+            <span>Fault-Injection Correctness Harness for File Sync</span>
+          </div>
+
+          <h1 class="animate-fade-up delay-1 font-serif text-4xl font-normal leading-[1.12] tracking-tight text-ink-900 sm:text-6xl">
+            Catch silent data loss in file-sync engines <span class="italic text-vermilion-600">before your users do.</span>
+          </h1>
+
+          <p class="animate-fade-up delay-2 mx-auto mt-6 max-w-2xl text-base leading-relaxed text-ink-700 sm:text-lg">
+            SyncFault runs <code class="font-mono text-sm bg-cream-200 px-1.5 py-0.5 rounded">rclone bisync</code>, <code class="font-mono text-sm bg-cream-200 px-1.5 py-0.5 rounded">unison</code>, and <code class="font-mono text-sm bg-cream-200 px-1.5 py-0.5 rounded">alto</code> inside disposable sandboxes, injects deterministic mid-transfer crashes, and verifies every surviving byte against an acceptable-state Oracle.
+          </p>
+
+          <!-- Narrative CTAs -->
+          <div class="animate-fade-up delay-3 mt-9 flex flex-wrap items-center justify-center gap-4">
+            <a href="#quickstart"
+               class="inline-flex items-center gap-2.5 rounded-md bg-ink-900 px-6 py-3 text-sm font-semibold text-cream-50 shadow-sm transition-colors hover:bg-vermilion-600">
+              <span>Run the Self-Check CLI</span>
+              <span class="font-mono text-xs opacity-80">&rarr;</span>
+            </a>
+            <a href="https://github.com/Vishv07/syncfault" target="_blank" rel="noopener noreferrer"
+               class="inline-flex items-center gap-2.5 rounded-md border border-ink-900/25 bg-cream-50 px-6 py-3 text-sm font-semibold text-ink-900 transition-colors hover:border-ink-900 hover:bg-white">
+              <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+              </svg>
+              <span>Clone the Repository</span>
+            </a>
+          </div>
+        </div>
+
+        <!-- Hero Interactive Terminal + Verdict Strip -->
+        <div class="mt-14 mx-auto max-w-4xl">
+          <div class="overflow-hidden rounded-xl border border-ink-900/15 bg-[#181715] text-[#EFECE6] shadow-xl">
+            <div class="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-[#211F1C] px-4 py-2.5">
+              <div class="flex items-center gap-2">
+                <span class="h-2.5 w-2.5 rounded-full bg-[#C83E2B]"></span>
+                <span class="h-2.5 w-2.5 rounded-full bg-[#D99B26]"></span>
+                <span class="h-2.5 w-2.5 rounded-full bg-[#2E7D4F]"></span>
+                <span class="ml-2 font-mono text-xs text-white/50">syncfault &mdash; zsh</span>
+              </div>
+              <div class="flex gap-1.5" role="tablist">
+                <button class="hero-tab rounded px-2.5 py-1 font-mono text-xs font-medium bg-white/10 text-white" data-tab="run">
+                  1. Fault Injection Run
+                </button>
+                <button class="hero-tab rounded px-2.5 py-1 font-mono text-xs font-medium text-white/60 hover:text-white" data-tab="selfcheck">
+                  2. Self-Check Gate
+                </button>
+                <button class="hero-tab rounded px-2.5 py-1 font-mono text-xs font-medium text-white/60 hover:text-white" data-tab="replay">
+                  3. 10/10 Seed Replay
+                </button>
+              </div>
+            </div>
+
+            <pre id="heroTerminal" class="overflow-x-auto p-6 font-mono text-xs leading-7 sm:text-[13px]"><span class="text-[#8C857B]">$</span> <span class="font-semibold text-white">./syncfault run --adapter bisync --scenario scenarios/rename_storm_sigkill.yaml --seed 412</span>
+<span class="text-[#8C857B]">[sandbox]</span>  confined root: $XDG_RUNTIME_DIR/syncfault/bisync-rename_storm_sigkill-seed-412
+<span class="text-[#8C857B]">[workload]</span> recipe=rename_storm depth=4 files=24 pcg_seed=412
+<span class="text-[#8C857B]">[journal]</span>  op=12 rename sideA/branch_1/level_1/draft_001.docx &rarr; final_001.docx
+<span class="text-[#E57358]">[fault]</span>    injector=sigkill fired at op_index=12 (+14ms seeded jitter) &rarr; target PGID killed
+<span class="text-[#8C857B]">[recover]</span>  heal complete; running quiescence loop (2 consecutive unchanging sync cycles)
+<span class="text-[#8C857B]">[oracle]</span>   evaluating 24 file paths against acceptable end-state lattice
+<span class="text-[#52B788] font-semibold">[CLEAN]</span>    run=bisync-rename_storm_sigkill-seed-412 seed=412 duration=184ms (replicas converged cleanly)</pre>
+          </div>
+
+          <!-- Severity Taxonomy Bar -->
+          <div class="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-5">
+            <div class="rounded-lg border border-cream-300 bg-cream-50 px-3.5 py-2.5">
+              <div class="flex items-center justify-between font-mono text-xs font-semibold text-vermilion-600">
+                <span>DATA_LOSS</span>
+                <span class="text-[11px] text-ink-500">Exit 40</span>
+              </div>
+              <p class="mt-1 text-[11px] leading-snug text-ink-500">Required file missing on all replicas &amp; trash.</p>
+            </div>
+            <div class="rounded-lg border border-cream-300 bg-cream-50 px-3.5 py-2.5">
+              <div class="flex items-center justify-between font-mono text-xs font-semibold text-[#C05621]">
+                <span>WRONG_BYTES</span>
+                <span class="text-[11px] text-ink-500">Exit 30</span>
+              </div>
+              <p class="mt-1 text-[11px] leading-snug text-ink-500">Torn write hash matches no journal entry.</p>
+            </div>
+            <div class="rounded-lg border border-cream-300 bg-cream-50 px-3.5 py-2.5">
+              <div class="flex items-center justify-between font-mono text-xs font-semibold text-[#975A16]">
+                <span>DUPLICATE</span>
+                <span class="text-[11px] text-ink-500">Exit 20</span>
+              </div>
+              <p class="mt-1 text-[11px] leading-snug text-ink-500">Data survives with ghost extra copies.</p>
+            </div>
+            <div class="rounded-lg border border-cream-300 bg-cream-50 px-3.5 py-2.5">
+              <div class="flex items-center justify-between font-mono text-xs font-semibold text-ink-700">
+                <span>STALL</span>
+                <span class="text-[11px] text-ink-500">Exit 10</span>
+              </div>
+              <p class="mt-1 text-[11px] leading-snug text-ink-500">Wedged lockfile; failed to converge.</p>
+            </div>
+            <div class="col-span-2 sm:col-span-1 rounded-lg border border-cream-300 bg-cream-50 px-3.5 py-2.5">
+              <div class="flex items-center justify-between font-mono text-xs font-semibold text-forest-700">
+                <span>CLEAN</span>
+                <span class="text-[11px] text-ink-500">Exit 0</span>
+              </div>
+              <p class="mt-1 text-[11px] leading-snug text-ink-500">Converged inside acceptable lattice.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. Social Proof / Engineering Guarantees Bar -->
+    <section class="border-b border-cream-300 bg-cream-200/60 py-10">
+      <div class="mx-auto max-w-6xl px-6">
+        <div class="grid grid-cols-2 gap-8 md:grid-cols-4">
+          <div>
+            <div class="font-serif text-3xl font-medium text-ink-900">0 Deps</div>
+            <div class="mt-1 font-mono text-xs text-ink-500">Pure Go Standard Library</div>
+          </div>
+          <div>
+            <div class="font-serif text-3xl font-medium text-ink-900">10 / 10</div>
+            <div class="mt-1 font-mono text-xs text-ink-500">Seed Replay Determinism</div>
+          </div>
+          <div>
+            <div class="font-serif text-3xl font-medium text-ink-900">4 Injectors</div>
+            <div class="mt-1 font-mono text-xs text-ink-500">sigkill &middot; netcut &middot; netslow &middot; enospc</div>
+          </div>
+          <div>
+            <div class="font-serif text-3xl font-medium text-ink-900">7 Recipes</div>
+            <div class="mt-1 font-mono text-xs text-ink-500">CRUD, Renames, Moves &amp; Conflicts</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. Clean Architectural Diagram Section -->
+    <section id="architecture" class="border-b border-cream-300 py-20">
+      <div class="mx-auto max-w-6xl px-6">
+        <div class="max-w-2xl">
+          <div class="font-mono text-xs uppercase tracking-widest text-vermilion-600">System Architecture</div>
+          <h2 class="mt-2 font-serif text-3xl font-normal text-ink-900 sm:text-4xl">
+            How a single seed drives a deterministic crash test.
+          </h2>
+          <p class="mt-3 text-base text-ink-700">
+            SyncFault never mocks or patches the sync tool under test. It mutates real files on disk, kills real process groups, and judges only the final filesystem state.
+          </p>
+        </div>
+
+        <!-- Minimalist Editorial Diagram -->
+        <div class="mt-10 rounded-xl border border-cream-300 bg-cream-50 p-6 sm:p-8">
+          <div class="grid gap-6 md:grid-cols-4">
+            <div class="rounded-lg border border-cream-300 bg-white p-5">
+              <div class="font-mono text-xs font-semibold text-vermilion-600">01. SCENARIO + SEED</div>
+              <div class="mt-2 font-serif text-lg font-medium text-ink-900">PCG Stream Expansion</div>
+              <p class="mt-2 text-xs leading-relaxed text-ink-500">
+                YAML recipe expands into a deterministic sequence of file creates, edits, renames, and sync cycles via a single <code class="font-mono">math/rand/v2</code> stream.
+              </p>
+            </div>
+
+            <div class="rounded-lg border border-cream-300 bg-white p-5">
+              <div class="font-mono text-xs font-semibold text-vermilion-600">02. JOURNAL TAP</div>
+              <div class="mt-2 font-serif text-lg font-medium text-ink-900">Operation-Index Fault</div>
+              <p class="mt-2 text-xs leading-relaxed text-ink-500">
+                Every syscall logs pre/post SHA-256 digests to an <code class="font-mono">O_SYNC</code> JSONL journal. At <code class="font-mono">op_index: N</code>, the armed injector fires immediately.
+              </p>
+            </div>
+
+            <div class="rounded-lg border border-cream-300 bg-white p-5">
+              <div class="font-mono text-xs font-semibold text-vermilion-600">03. QUIESCENCE</div>
+              <div class="mt-2 font-serif text-lg font-medium text-ink-900">Heal &amp; Recovery Loop</div>
+              <p class="mt-2 text-xs leading-relaxed text-ink-500">
+                Faults heal and the sync tool restarts. SyncFault runs recovery cycles until two consecutive cycles produce zero file changes across replicas.
+              </p>
+            </div>
+
+            <div class="rounded-lg border border-cream-300 bg-white p-5">
+              <div class="font-mono text-xs font-semibold text-forest-700">04. ORACLE VERDICT</div>
+              <div class="mt-2 font-serif text-lg font-medium text-ink-900">Lattice Classification</div>
+              <p class="mt-2 text-xs leading-relaxed text-ink-500">
+                The Oracle computes acceptable end states from the journal alone and walks <code class="font-mono">sideA</code>, <code class="font-mono">sideB</code>, and <code class="font-mono">remote</code> to emit a verdict.
+              </p>
+            </div>
+          </div>
+
+          <!-- Sandbox Schematic Box -->
+          <div class="mt-6 rounded-lg border border-cream-300 bg-cream-200/70 p-4 font-mono text-xs">
+            <div class="flex flex-wrap items-center justify-between gap-2 text-ink-500 mb-3">
+              <span>CONFINED SANDBOX ROOT: <strong class="text-ink-900">$XDG_RUNTIME_DIR/syncfault/&lt;run_id&gt;/</strong></span>
+              <span class="rounded bg-cream-300/80 px-2 py-0.5 text-[11px] text-ink-700">Symlink &amp; Path-Escape Guarded</span>
+            </div>
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div class="rounded border border-cream-300 bg-cream-50 p-3 text-center">
+                <div class="font-semibold text-ink-900">sideA/</div>
+                <div class="mt-0.5 text-[11px] text-ink-500">Primary Replica Mutated by Driver</div>
+              </div>
+              <div class="rounded border border-vermilion-600/40 bg-vermilion-50 p-3 text-center">
+                <div class="font-semibold text-vermilion-700">[ Target Sync Process &amp; Remote ]</div>
+                <div class="mt-0.5 text-[11px] text-vermilion-600">bisync | alto | unison | refgood | refbad</div>
+              </div>
+              <div class="rounded border border-cream-300 bg-cream-50 p-3 text-center">
+                <div class="font-semibold text-ink-900">sideB/</div>
+                <div class="mt-0.5 text-[11px] text-ink-500">Peer Replica Verified for Convergence</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Core Features Grid (3 High-Impact Columns) -->
+    <section id="features" class="border-b border-cream-300 py-20">
+      <div class="mx-auto max-w-6xl px-6">
+        <div class="max-w-2xl">
+          <div class="font-mono text-xs uppercase tracking-widest text-vermilion-600">Engineering Principles</div>
+          <h2 class="mt-2 font-serif text-3xl font-normal text-ink-900 sm:text-4xl">
+            Built so every reported bug is indisputable.
+          </h2>
+        </div>
+
+        <div class="mt-12 grid gap-8 md:grid-cols-3">
+          <div class="border-t-2 border-ink-900 pt-5">
+            <div class="font-mono text-xs text-ink-500">01 / DETERMINISM</div>
+            <h3 class="mt-2 font-serif text-2xl font-normal text-ink-900">Operation-Anchored Faults</h3>
+            <p class="mt-3 text-sm leading-relaxed text-ink-700">
+              Wall-clock timers make chaos tests impossible to reproduce. SyncFault anchors <code class="font-mono text-xs">sigkill</code>, <code class="font-mono text-xs">netcut</code>, <code class="font-mono text-xs">netslow</code>, and <code class="font-mono text-xs">enospc</code> to exact operation counts in the run journal, making every finding replayable with <code class="font-mono text-xs">syncfault replay --run-id</code>.
+            </p>
+          </div>
+
+          <div class="border-t-2 border-ink-900 pt-5">
+            <div class="font-mono text-xs text-ink-500">02 / VERIFICATION</div>
+            <h3 class="mt-2 font-serif text-2xl font-normal text-ink-900">Lattice State Oracle</h3>
+            <p class="mt-3 text-sm leading-relaxed text-ink-700">
+              When a crash interrupts a rename or concurrent edit, more than one end state can be valid. The Oracle computes the exact lattice of acceptable post-recovery states from the journal—and never reads target logs to judge a run.
+            </p>
+          </div>
+
+          <div class="border-t-2 border-ink-900 pt-5">
+            <div class="font-mono text-xs text-ink-500">03 / SELF-VALIDATION</div>
+            <h3 class="mt-2 font-serif text-2xl font-normal text-ink-900">Sacred Self-Check Gate</h3>
+            <p class="mt-3 text-sm leading-relaxed text-ink-700">
+              SyncFault ships with <code class="font-mono text-xs">refgood</code> (atomic temp-write + fsync reference sync) and <code class="font-mono text-xs">refbad</code> (sabotaged non-atomic rename and torn write). CI requires <code class="font-mono text-xs">syncfault selfcheck</code> to catch <code class="font-mono text-xs">refbad</code> 10/10 times on every commit.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 6. Quick Start Terminal & Scenario YAML -->
+    <section id="quickstart" class="border-b border-cream-300 py-20">
+      <div class="mx-auto max-w-6xl px-6">
+        <div class="grid gap-10 lg:grid-cols-12 lg:items-start">
+          <div class="lg:col-span-5">
+            <div class="font-mono text-xs uppercase tracking-widest text-vermilion-600">Quickstart</div>
+            <h2 class="mt-2 font-serif text-3xl font-normal text-ink-900 sm:text-4xl">
+              Compile in two seconds. Run your first fault suite.
+            </h2>
+            <p class="mt-4 text-sm leading-relaxed text-ink-700">
+              SyncFault is a single static Go binary with zero external dependencies. Scenarios are plain YAML files—you can add new fault coverage without touching Go code.
+            </p>
+
+            <div class="mt-6 space-y-3 border-t border-cream-300 pt-6 text-xs text-ink-700">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold text-ink-900">doctor</span>
+                <span class="font-mono text-ink-500">Verify namespaces, tools &amp; sweep orphans</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="font-semibold text-ink-900">selfcheck</span>
+                <span class="font-mono text-ink-500">Validate refgood (CLEAN) &amp; refbad (caught)</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="font-semibold text-ink-900">run / replay</span>
+                <span class="font-mono text-ink-500">Execute or deterministically replay a seed</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="font-semibold text-ink-900">suite / report</span>
+                <span class="font-mono text-ink-500">Run matrix &amp; build scorecard.md + index.html</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="lg:col-span-7 space-y-4">
+            <div class="relative rounded-xl border border-ink-900/15 bg-[#181715] p-5 text-[#EFECE6] shadow-md">
+              <button class="copy-btn absolute right-4 top-4 rounded border border-white/15 bg-white/5 px-2.5 py-1 font-mono text-[11px] text-white/80 hover:bg-white/15"
+                      data-copy="git clone https://github.com/Vishv07/syncfault.git
+cd syncfault
+go build -o syncfault ./cmd/syncfault
+./syncfault doctor
+./syncfault selfcheck
+./syncfault suite --adapter refgood --suite smoke --db runs.db
+./syncfault report --db runs.db --out report/">
+                Copy CLI
+              </button>
+              <div class="font-mono text-[11px] uppercase tracking-wider text-white/40 mb-2">Terminal &mdash; Install &amp; Run</div>
+              <pre class="overflow-x-auto font-mono text-xs leading-6">git clone https://github.com/Vishv07/syncfault.git
+cd syncfault
+go build -o syncfault ./cmd/syncfault
+
+# 1. Check host capabilities &amp; run the self-validation gate
+./syncfault doctor
+./syncfault selfcheck
+
+# 2. Execute the smoke suite &amp; generate the scorecard
+./syncfault suite --adapter refgood --suite smoke --db runs.db
+./syncfault report --db runs.db --out report/</pre>
+            </div>
+
+            <div class="relative rounded-xl border border-cream-300 bg-cream-50 p-5 text-ink-900">
+              <button class="copy-btn absolute right-4 top-4 rounded border border-cream-300 bg-white px-2.5 py-1 font-mono text-[11px] text-ink-700 hover:border-ink-900"
+                      data-copy="name: rename_storm_sigkill
+description: Deep directory renamed while files sync; process killed mid-cycle.
+workload:
+  recipe: rename_storm
+  params:
+    depth: 4
+    files: 24
+    file_size: { min: 1KiB, max: 64KiB }
+  sides: [A]
+fault:
+  type: sigkill
+  at:
+    op_index: 12
+    jitter_ms: { min: 0, max: 20, seeded: true }
+expect:
+  conflict_policy: default
+runs:
+  seeds: [1..50]
+  timeout_s: 180">
+                Copy YAML
+              </button>
+              <div class="font-mono text-[11px] uppercase tracking-wider text-ink-500 mb-2">scenarios/rename_storm_sigkill.yaml</div>
+              <pre class="overflow-x-auto font-mono text-xs leading-6 text-ink-700">name: rename_storm_sigkill
+workload:
+  recipe: rename_storm
+  params:
+    depth: 4
+    files: 24
+    file_size: { min: 1KiB, max: 64KiB }
+  sides: [A]
+fault:
+  type: sigkill
+  at:
+    op_index: 12
+    jitter_ms: { min: 0, max: 20, seeded: true }
+runs:
+  seeds: [1..50]
+  timeout_s: 180</pre>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. FAQ / Objection Destruction -->
+    <section id="faq" class="border-b border-cream-300 py-20">
+      <div class="mx-auto max-w-4xl px-6">
+        <div class="text-center">
+          <div class="font-mono text-xs uppercase tracking-widest text-vermilion-600">Technical FAQ</div>
+          <h2 class="mt-2 font-serif text-3xl font-normal text-ink-900 sm:text-4xl">
+            Safety rails, privileges, and extensibility.
+          </h2>
+        </div>
+
+        <div class="mt-12 divide-y divide-cream-300 border-y border-cream-300">
+          <div class="py-6">
+            <h3 class="font-serif text-xl font-medium text-ink-900">
+              Can a fault run accidentally touch my real files or live cloud remotes?
+            </h3>
+            <p class="mt-2 text-sm leading-relaxed text-ink-700">
+              No. Every workload and verification path passes through <code class="font-mono text-xs">sandbox.ResolveAndConfine</code>, which evaluates symlinks and aborts immediately (<code class="font-mono text-xs">ErrPathEscape</code>) if any path resolves outside <code class="font-mono text-xs">$XDG_RUNTIME_DIR/syncfault/&lt;run_id&gt;/</code>. Adapters generate sandbox-local configs and never read <code class="font-mono text-xs">~/.config/rclone</code>.
+            </p>
+          </div>
+
+          <div class="py-6">
+            <h3 class="font-serif text-xl font-medium text-ink-900">
+              Does SyncFault require root access or a custom kernel?
+            </h3>
+            <p class="mt-2 text-sm leading-relaxed text-ink-700">
+              Never. On Linux, network and mount injectors use unprivileged user namespaces (<code class="font-mono text-xs">unshare -rn</code>). On macOS or hosts where user namespaces are disabled, <code class="font-mono text-xs">syncfault doctor</code> detects the environment and runs in rootless <code class="font-mono text-xs">sigkill</code> + sandbox quota mode automatically.
+            </p>
+          </div>
+
+          <div class="py-6">
+            <h3 class="font-serif text-xl font-medium text-ink-900">
+              How much code does it take to test my own sync engine?
+            </h3>
+            <p class="mt-2 text-sm leading-relaxed text-ink-700">
+              Roughly 150 lines of Go implementing the 8-method <code class="font-mono text-xs">adapter.Target</code> interface (<code class="font-mono text-xs">Setup</code>, <code class="font-mono text-xs">SyncCycle</code>, <code class="font-mono text-xs">PID</code>, <code class="font-mono text-xs">Teardown</code>, <code class="font-mono text-xs">ConflictPolicy</code>). Your adapter immediately inherits all 7 workload recipes, 4 fault injectors, the replay engine, and HTML/Markdown scorecard generation.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 8. Final High-Intent CTA Footer -->
+    <section class="py-20 text-center">
+      <div class="mx-auto max-w-3xl px-6">
+        <h2 class="font-serif text-3xl font-normal text-ink-900 sm:text-5xl">
+          Ready to torture-test your sync setup?
+        </h2>
+        <p class="mx-auto mt-4 max-w-xl text-base text-ink-700">
+          Explore the scenario corpus, inspect the Oracle implementation, or add an adapter for your favorite sync tool on GitHub.
+        </p>
+        <div class="mt-8 flex flex-wrap justify-center gap-4">
+          <a href="https://github.com/Vishv07/syncfault" target="_blank" rel="noopener noreferrer"
+             class="inline-flex items-center gap-2.5 rounded-md bg-ink-900 px-6 py-3 text-sm font-semibold text-cream-50 transition-colors hover:bg-vermilion-600">
+            <svg class="h-4 w-4" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+            </svg>
+            <span>Star Vishv07/syncfault on GitHub</span>
+          </a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="border-t border-cream-300 bg-cream-200/40 py-8 text-xs text-ink-500">
+    <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-6">
+      <div class="font-mono">
+        SyncFault &mdash; Apache-2.0 License
+      </div>
+      <div class="flex items-center gap-6">
+        <a href="https://github.com/Vishv07/syncfault" target="_blank" rel="noopener noreferrer" class="hover:text-ink-900">GitHub</a>
+        <a href="#architecture" class="hover:text-ink-900">Architecture</a>
+        <a href="#quickstart" class="hover:text-ink-900">Quickstart</a>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    // Interactive Terminal Tab Switcher
+    const snippets = {
+      run: `<span class="text-[#8C857B]">$</span> <span class="font-semibold text-white">./syncfault run --adapter bisync --scenario scenarios/rename_storm_sigkill.yaml --seed 412</span>
+<span class="text-[#8C857B]">[sandbox]</span>  confined root: $XDG_RUNTIME_DIR/syncfault/bisync-rename_storm_sigkill-seed-412
+<span class="text-[#8C857B]">[workload]</span> recipe=rename_storm depth=4 files=24 pcg_seed=412
+<span class="text-[#8C857B]">[journal]</span>  op=12 rename sideA/branch_1/level_1/draft_001.docx &rarr; final_001.docx
+<span class="text-[#E57358]">[fault]</span>    injector=sigkill fired at op_index=12 (+14ms seeded jitter) &rarr; target PGID killed
+<span class="text-[#8C857B]">[recover]</span>  heal complete; running quiescence loop (2 consecutive unchanging sync cycles)
+<span class="text-[#8C857B]">[oracle]</span>   evaluating 24 file paths against acceptable end-state lattice
+<span class="text-[#52B788] font-semibold">[CLEAN]</span>    run=bisync-rename_storm_sigkill-seed-412 seed=412 duration=184ms (replicas converged cleanly)`,
+
+      selfcheck: `<span class="text-[#8C857B]">$</span> <span class="font-semibold text-white">./syncfault selfcheck</span>
+SyncFault Self-Validation Gate
+==============================
+refgood runs:          20 (DATA_LOSS/WRONG_BYTES failures: 0)
+refbad DATA_LOSS:      10/10 reproduced (non-atomic rename sabotage caught)
+refbad WRONG_BYTES:    10/10 reproduced (torn write without fsync caught)
+<span class="text-[#52B788] font-semibold">GATE RESULT:           PASS</span>`,
+
+      replay: `<span class="text-[#8C857B]">$</span> <span class="font-semibold text-white">./syncfault replay --run-id 2026-11-03-refbad-412 --replays 10</span>
+<span class="text-[#8C857B]">[replay]</span>   loaded scenario=rename_storm_sigkill seed=412 from runs.db
+<span class="text-[#8C857B]">[replay]</span>   executing 10 deterministic replays with identical PCG stream...
+<span class="text-[#E57358] font-semibold">[REPLAY]</span>   run=2026-11-03-refbad-412 matched=10/10 original=DATA_LOSS flaky=false`
+    };
+
+    const term = document.getElementById('heroTerminal');
+    document.querySelectorAll('.hero-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.hero-tab').forEach(b => {
+          b.className = 'hero-tab rounded px-2.5 py-1 font-mono text-xs font-medium text-white/60 hover:text-white';
+        });
+        btn.className = 'hero-tab rounded px-2.5 py-1 font-mono text-xs font-medium bg-white/10 text-white';
+        term.innerHTML = snippets[btn.dataset.tab] || snippets.run;
+      });
+    });
+
+    // Copy buttons
+    document.querySelectorAll('.copy-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        try {
+          await navigator.clipboard.writeText(btn.getAttribute('data-copy'));
+          const prev = btn.textContent;
+          btn.textContent = 'Copied!';
+          setTimeout(() => { btn.textContent = prev; }, 1500);
+        } catch (_) {}
+      });
+    });
+
+    // Live GitHub Star Counter (graceful fallback)
+    fetch('https://api.github.com/repos/Vishv07/syncfault')
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && typeof data.stargazers_count === 'number') {
+          document.getElementById('ghStars').textContent = `★ ${data.stargazers_count}`;
+        }
+      })
+      .catch(() => {});
+  </script>
+</body>
+</html>
