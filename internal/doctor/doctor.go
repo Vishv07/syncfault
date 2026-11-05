@@ -21,14 +21,14 @@ type CheckResult struct {
 
 // Report summarizes the host environment capabilities for SyncFault.
 type Report struct {
-	OS                string
-	Arch              string
-	GoVersion         string
-	UserNamespacesOK  bool
-	DegradedSigkill   bool
-	FreeDiskBytes     uint64
-	Checks            []CheckResult
-	OrphansRemoved    int
+	OS               string
+	Arch             string
+	GoVersion        string
+	UserNamespacesOK bool
+	DegradedSigkill  bool
+	FreeDiskBytes    uint64
+	Checks           []CheckResult
+	OrphansRemoved   int
 }
 
 // SandboxRoot returns the base directory under which all SyncFault runs are confined.
