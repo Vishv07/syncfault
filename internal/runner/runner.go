@@ -8,40 +8,25 @@ import (
 
 	"github.com/Vishv07/syncfault/internal/adapter"
 	_ "github.com/Vishv07/syncfault/internal/adapter/refgood"
+	"github.com/Vishv07/syncfault/internal/fault"
 	"github.com/Vishv07/syncfault/internal/journal"
+	"github.com/Vishv07/syncfault/internal/oracle"
 	"github.com/Vishv07/syncfault/internal/sandbox"
 	"github.com/Vishv07/syncfault/internal/scenario"
+	"github.com/Vishv07/syncfault/internal/verify"
 	"github.com/Vishv07/syncfault/internal/workload"
 )
 
-// Verdict represents one of the five severity-ordered outcome classifications (§7.6).
-type Verdict string
+// Verdict aliases verify.Verdict for callers of the runner package.
+type Verdict = verify.Verdict
 
 const (
-	VerdictClean      Verdict = "CLEAN"
-	VerdictStall      Verdict = "STALL"
-	VerdictDuplicate  Verdict = "DUPLICATE"
-	VerdictWrongBytes Verdict = "WRONG_BYTES"
-	VerdictDataLoss   Verdict = "DATA_LOSS"
+	VerdictClean      = verify.VerdictClean
+	VerdictStall      = verify.VerdictStall
+	VerdictDuplicate  = verify.VerdictDuplicate
+	VerdictWrongBytes = verify.VerdictWrongBytes
+	VerdictDataLoss   = verify.VerdictDataLoss
 )
-
-// Severity returns the numeric severity rank (higher = worse).
-func (v Verdict) Severity() int {
-	switch v {
-	case VerdictClean:
-		return 0
-	case VerdictStall:
-		return 10
-	case VerdictDuplicate:
-		return 20
-	case VerdictWrongBytes:
-		return 30
-	case VerdictDataLoss:
-		return 40
-	default:
-		return 2
-	}
-}
 
 // RunConfig holds parameters for executing a single (scenario, seed, adapter) run.
 type RunConfig struct {
@@ -69,7 +54,8 @@ type RunResult struct {
 	SandboxRoot   string
 }
 
-// ExecuteSingle runs one (scenario, seed) against the specified adapter.
+// ExecuteSingle runs one (scenario, seed) against the specified adapter, injects the configured fault,
+// heals and runs recovery sync cycles, and classifies the end state via the Oracle and Verifier.
 func ExecuteSingle(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 	start := time.Now()
 	if cfg.Scenario == nil {
@@ -114,6 +100,25 @@ func ExecuteSingle(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 	}
 	defer j.Close()
 
+	// Arm fault injector with seeded jitter anchored on OpIndex
+	inj, err := fault.New(cfg.Scenario.Fault.Type, cfg.Scenario.Fault.Params, cfg.Seed)
+	if err != nil {
+		return nil, err
+	}
+	jitterStream := scenario.NewStream(cfg.Seed ^ 0xabcdef)
+	jitterMS := jitterStream.JitterMS(cfg.Scenario.Fault.At.JitterMS)
+	if err := inj.Arm(runCtx, fault.Trigger{
+		OpIndex:  cfg.Scenario.Fault.At.OpIndex,
+		JitterMS: jitterMS,
+		Journal:  j,
+		Targetfn: target.PID,
+	}, sb); err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = inj.Heal()
+	}()
+
 	// Initial baseline sync cycle
 	if err := target.SyncCycle(runCtx); err != nil {
 		return nil, fmt.Errorf("initial baseline sync: %w", err)
@@ -129,7 +134,6 @@ func ExecuteSingle(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 		Sandbox: sb,
 		Journal: j,
 		SyncHook: func(sctx context.Context, _ int) error {
-			// Best-effort sync during workload (fault may interrupt it)
 			_ = target.SyncCycle(sctx)
 			return nil
 		},
@@ -139,23 +143,30 @@ func ExecuteSingle(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 		return nil, err
 	}
 
-	// Recovery sync cycle
-	if err := target.SyncCycle(runCtx); err != nil {
-		return &RunResult{
-			RunID:         cfg.RunID,
-			Adapter:       cfg.AdapterName,
-			TargetVersion: ver,
-			ScenarioName:  cfg.Scenario.Name,
-			Recipe:        cfg.Scenario.Workload.Recipe,
-			FaultType:     cfg.Scenario.Fault.Type,
-			Seed:          cfg.Seed,
-			Verdict:       VerdictStall,
-			Reason:        fmt.Sprintf("recovery sync failed: %v", err),
-			Duration:      time.Since(start),
-			Entries:       j.Entries(),
-			SandboxRoot:   sb.Root,
-		}, nil
+	// Heal fault and run recovery sync cycles
+	if err := inj.Heal(); err != nil {
+		return nil, fmt.Errorf("fault heal: %w", err)
 	}
+
+	converged := true
+	for cycle := 0; cycle < 2; cycle++ {
+		if err := target.SyncCycle(runCtx); err != nil {
+			converged = false
+		}
+	}
+
+	policy := cfg.Scenario.Expect.ConflictPolicy
+	if policy == "" || policy == scenario.ConflictPolicyDefault {
+		policy = target.ConflictPolicy()
+	}
+
+	entries := j.Entries()
+	model := oracle.Compute(entries, policy)
+	snap, err := verify.WalkSandbox(sb)
+	if err != nil {
+		return nil, fmt.Errorf("verify walk: %w", err)
+	}
+	eval := verify.Evaluate(model, snap, converged)
 
 	return &RunResult{
 		RunID:         cfg.RunID,
@@ -165,10 +176,11 @@ func ExecuteSingle(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 		Recipe:        cfg.Scenario.Workload.Recipe,
 		FaultType:     cfg.Scenario.Fault.Type,
 		Seed:          cfg.Seed,
-		Verdict:       VerdictClean,
-		Reason:        "replicas converged cleanly",
+		Verdict:       eval.Verdict,
+		Reason:        eval.Reason,
+		Flags:         eval.Flags,
 		Duration:      time.Since(start),
-		Entries:       j.Entries(),
+		Entries:       entries,
 		SandboxRoot:   sb.Root,
 	}, nil
 }
