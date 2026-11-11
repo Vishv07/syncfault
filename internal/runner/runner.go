@@ -143,16 +143,14 @@ func ExecuteSingle(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 		return nil, err
 	}
 
-	// Heal fault and run recovery sync cycles
+	// Heal fault and run quiescence convergence loop (§7.8)
 	if err := inj.Heal(); err != nil {
 		return nil, fmt.Errorf("fault heal: %w", err)
 	}
 
-	converged := true
-	for cycle := 0; cycle < 2; cycle++ {
-		if err := target.SyncCycle(runCtx); err != nil {
-			converged = false
-		}
+	snap, converged, err := WaitForQuiescence(runCtx, target, sb, 4)
+	if err != nil {
+		return nil, fmt.Errorf("verify walk: %w", err)
 	}
 
 	policy := cfg.Scenario.Expect.ConflictPolicy
@@ -162,10 +160,6 @@ func ExecuteSingle(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 
 	entries := j.Entries()
 	model := oracle.Compute(entries, policy)
-	snap, err := verify.WalkSandbox(sb)
-	if err != nil {
-		return nil, fmt.Errorf("verify walk: %w", err)
-	}
 	eval := verify.Evaluate(model, snap, converged)
 
 	return &RunResult{
