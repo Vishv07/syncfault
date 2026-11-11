@@ -1,0 +1,21 @@
+# scenarios/mass_delete_sigkill.yaml
+name: mass_delete_sigkill
+description: Bulk file deletion interrupted by SIGKILL mid-propagation.
+workload:
+  recipe: mass_delete
+  params:
+    depth: 3
+    files: 16
+    file_size: { min: 512B, max: 8KiB }
+  sides: [A]
+fault:
+  type: sigkill
+  at:
+    op_index: 14
+    jitter_ms: { min: 0, max: 15, seeded: true }
+  params: {}
+expect:
+  conflict_policy: default
+runs:
+  seeds: [1..25]
+  timeout_s: 180

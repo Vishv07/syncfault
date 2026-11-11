@@ -1,0 +1,21 @@
+# scenarios/rename_storm_sigkill.yaml
+name: rename_storm_sigkill
+description: Deep directory renamed while files sync; process killed mid-cycle.
+workload:
+  recipe: rename_storm
+  params:
+    depth: 4
+    files: 24
+    file_size: { min: 1KiB, max: 64KiB }
+  sides: [A]
+fault:
+  type: sigkill
+  at:
+    op_index: 12
+    jitter_ms: { min: 0, max: 20, seeded: true }
+  params: {}
+expect:
+  conflict_policy: default
+runs:
+  seeds: [1..50]
+  timeout_s: 180

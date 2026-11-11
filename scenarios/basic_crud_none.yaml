@@ -1,0 +1,18 @@
+# scenarios/basic_crud_none.yaml
+name: basic_crud_none
+description: Baseline file creation, edit, rename, and delete with zero faults.
+workload:
+  recipe: basic_crud
+  params:
+    depth: 3
+    files: 12
+    file_size: { min: 512B, max: 16KiB }
+  sides: [A]
+fault:
+  type: none
+  params: {}
+expect:
+  conflict_policy: default
+runs:
+  seeds: [1..10]
+  timeout_s: 120

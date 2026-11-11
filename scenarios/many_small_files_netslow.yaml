@@ -1,0 +1,23 @@
+# scenarios/many_small_files_netslow.yaml
+name: many_small_files_netslow
+description: High-file-count batch synced over degraded link with latency and loss.
+workload:
+  recipe: many_small_files
+  params:
+    depth: 3
+    files: 32
+    file_size: { min: 128B, max: 2KiB }
+  sides: [A]
+fault:
+  type: netslow
+  at:
+    op_index: 8
+    jitter_ms: { min: 0, max: 10, seeded: true }
+  params:
+    delay_ms: 50
+    loss_pct: 5
+expect:
+  conflict_policy: default
+runs:
+  seeds: [1..20]
+  timeout_s: 180

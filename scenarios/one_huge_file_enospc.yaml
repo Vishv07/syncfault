@@ -1,0 +1,21 @@
+# scenarios/one_huge_file_enospc.yaml
+name: one_huge_file_enospc
+description: Large payload transfer encounters disk quota exhaustion mid-write.
+workload:
+  recipe: one_huge_file
+  params:
+    depth: 2
+    files: 1
+    file_size: { min: 64KiB, max: 256KiB }
+  sides: [A]
+fault:
+  type: enospc
+  at:
+    op_index: 1
+    jitter_ms: { min: 0, max: 10, seeded: true }
+  params: {}
+expect:
+  conflict_policy: default
+runs:
+  seeds: [1..20]
+  timeout_s: 180

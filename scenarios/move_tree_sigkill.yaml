@@ -1,0 +1,21 @@
+# scenarios/move_tree_sigkill.yaml
+name: move_tree_sigkill
+description: Entire directory subtree relocated across branches while target is killed.
+workload:
+  recipe: move_tree
+  params:
+    depth: 3
+    files: 16
+    file_size: { min: 1KiB, max: 32KiB }
+  sides: [A]
+fault:
+  type: sigkill
+  at:
+    op_index: 10
+    jitter_ms: { min: 0, max: 15, seeded: true }
+  params: {}
+expect:
+  conflict_policy: default
+runs:
+  seeds: [1..25]
+  timeout_s: 180
