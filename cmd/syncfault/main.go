@@ -94,6 +94,16 @@ func runCLI(args []string) int {
 		}
 		return worst
 
+	case "selfcheck":
+		sum, err := runner.RunSelfCheck(context.Background(), os.Stdout)
+		if err != nil || !sum.Passed {
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "selfcheck error: %v\n", err)
+			}
+			return ExitHarnessError
+		}
+		return ExitClean
+
 	case "help", "-h", "--help":
 		printUsage()
 		return ExitClean

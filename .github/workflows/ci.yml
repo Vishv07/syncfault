@@ -31,3 +31,6 @@ jobs:
 
       - name: Run environment doctor
         run: ./syncfault doctor
+
+      - name: Run selfcheck gate
+        run: ./syncfault selfcheck
