@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/Vishv07/syncfault/internal/doctor"
+	"github.com/Vishv07/syncfault/internal/journal"
 	"github.com/Vishv07/syncfault/internal/runner"
 	"github.com/Vishv07/syncfault/internal/scenario"
 )
@@ -58,6 +59,7 @@ func runCLI(args []string) int {
 		scenarioPath := fs.String("scenario", "", "path to scenario YAML file")
 		seedFlag := fs.Uint64("seed", 0, "optional single seed override")
 		keep := fs.Bool("keep", false, "keep sandbox directory after run")
+		dbPath := fs.String("db", "runs.db", "path to SQLite runs database")
 		if err := fs.Parse(args[1:]); err != nil {
 			return ExitHarnessError
 		}
@@ -65,11 +67,17 @@ func runCLI(args []string) int {
 			fmt.Fprintln(os.Stderr, "error: --scenario is required")
 			return ExitHarnessError
 		}
-		sc, err := scenario.LoadFile(*scenarioPath)
+		rawBytes, err := os.ReadFile(*scenarioPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error reading scenario: %v\n", err)
+			return ExitHarnessError
+		}
+		sc, err := scenario.Parse(string(rawBytes))
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "error loading scenario: %v\n", err)
 			return ExitHarnessError
 		}
+		store, _ := journal.OpenStore(*dbPath)
 		seeds := sc.Runs.Seeds
 		if *seedFlag != 0 {
 			seeds = []uint64{*seedFlag}
@@ -86,6 +94,7 @@ func runCLI(args []string) int {
 				fmt.Fprintf(os.Stderr, "harness error (seed %d): %v\n", seed, err)
 				return ExitHarnessError
 			}
+			_ = runner.PersistResult(store, res, string(rawBytes))
 			fmt.Printf("[%s] run=%s seed=%d fault=%s duration=%s (%s)\n",
 				res.Verdict, res.RunID, res.Seed, res.FaultType, res.Duration.Round(1e6), res.Reason)
 			if sev := res.Verdict.Severity(); sev > worst {
@@ -93,6 +102,35 @@ func runCLI(args []string) int {
 			}
 		}
 		return worst
+
+	case "replay":
+		fs := flag.NewFlagSet("replay", flag.ContinueOnError)
+		runID := fs.String("run-id", "", "recorded run ID to replay")
+		dbPath := fs.String("db", "runs.db", "path to runs database")
+		replays := fs.Int("replays", 1, "number of replay executions")
+		if err := fs.Parse(args[1:]); err != nil {
+			return ExitHarnessError
+		}
+		if *runID == "" {
+			fmt.Fprintln(os.Stderr, "error: --run-id is required")
+			return ExitHarnessError
+		}
+		store, err := journal.OpenStore(*dbPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "open store error: %v\n", err)
+			return ExitHarnessError
+		}
+		rep, err := runner.ReplayRun(context.Background(), store, *runID, "scenarios", *replays)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "replay error: %v\n", err)
+			return ExitHarnessError
+		}
+		fmt.Printf("[REPLAY] run=%s matched=%d/%d original=%s flaky=%v\n",
+			rep.RunID, rep.MatchedCount, rep.TotalReplays, rep.Original, rep.Flaky)
+		if rep.LastRunResult != nil {
+			return rep.LastRunResult.Verdict.Severity()
+		}
+		return ExitClean
 
 	case "selfcheck":
 		sum, err := runner.RunSelfCheck(context.Background(), os.Stdout)
