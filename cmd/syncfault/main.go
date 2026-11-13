@@ -132,6 +132,63 @@ func runCLI(args []string) int {
 		}
 		return ExitClean
 
+	case "suite":
+		fs := flag.NewFlagSet("suite", flag.ContinueOnError)
+		adapterName := fs.String("adapter", "refgood", "target adapter name")
+		suiteName := fs.String("suite", "smoke", "suite size (smoke|nightly|full)")
+		dbPath := fs.String("db", "runs.db", "path to runs database")
+		jobs := fs.Int("jobs", 2, "worker concurrency")
+		if err := fs.Parse(args[1:]); err != nil {
+			return ExitHarnessError
+		}
+		store, err := journal.OpenStore(*dbPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "open store error: %v\n", err)
+			return ExitHarnessError
+		}
+		sum, err := runner.RunSuite(context.Background(), runner.SuiteOptions{
+			AdapterName: *adapterName,
+			SuiteName:   *suiteName,
+			Store:       store,
+			Jobs:        *jobs,
+			Out:         os.Stdout,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "suite error: %v\n", err)
+			return ExitHarnessError
+		}
+		fmt.Printf("\nSuite %q complete: %d runs, worst verdict=%s\n", *suiteName, sum.TotalRuns, sum.Worst)
+		return sum.Worst.Severity()
+
+	case "ci":
+		fs := flag.NewFlagSet("ci", flag.ContinueOnError)
+		adapterName := fs.String("adapter", "refgood", "target adapter name")
+		suiteName := fs.String("suite", "smoke", "suite size (smoke|nightly|full)")
+		failOn := fs.String("fail-on", "data_loss,wrong_bytes", "comma-separated verdicts that fail CI")
+		dbPath := fs.String("db", "runs.db", "path to runs database")
+		if err := fs.Parse(args[1:]); err != nil {
+			return ExitHarnessError
+		}
+		store, err := journal.OpenStore(*dbPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "open store error: %v\n", err)
+			return ExitHarnessError
+		}
+		sum, err := runner.RunSuite(context.Background(), runner.SuiteOptions{
+			AdapterName: *adapterName,
+			SuiteName:   *suiteName,
+			Store:       store,
+			Out:         os.Stdout,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "ci suite error: %v\n", err)
+			return ExitHarnessError
+		}
+		if failed, code := sum.ShouldFailCI(*failOn); failed {
+			return code
+		}
+		return ExitClean
+
 	case "selfcheck":
 		sum, err := runner.RunSelfCheck(context.Background(), os.Stdout)
 		if err != nil || !sum.Passed {
