@@ -1,0 +1,21 @@
+# scenarios/concurrent_edit_sigkill.yaml
+name: concurrent_edit_sigkill
+description: Both replicas mutate overlapping files inside one sync window; target killed mid-reconciliation.
+workload:
+  recipe: concurrent_edit
+  params:
+    depth: 2
+    files: 8
+    file_size: { min: 256B, max: 4KiB }
+  sides: [A, B]
+fault:
+  type: sigkill
+  at:
+    op_index: 12
+    jitter_ms: { min: 0, max: 15, seeded: true }
+  params: {}
+expect:
+  conflict_policy: conflict_copy
+runs:
+  seeds: [1..25]
+  timeout_s: 180

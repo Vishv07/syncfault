@@ -1,0 +1,18 @@
+# scenarios/concurrent_edit_lww.yaml
+name: concurrent_edit_lww
+description: Concurrent mutations evaluated under documented Last-Writer-Wins policy override.
+workload:
+  recipe: concurrent_edit
+  params:
+    depth: 2
+    files: 6
+    file_size: { min: 256B, max: 2KiB }
+  sides: [A, B]
+fault:
+  type: none
+  params: {}
+expect:
+  conflict_policy: lww
+runs:
+  seeds: [1..10]
+  timeout_s: 120
