@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Vishv07/syncfault/internal/adapter"
+	_ "github.com/Vishv07/syncfault/internal/adapter/alto"
 	_ "github.com/Vishv07/syncfault/internal/adapter/bisync"
 	_ "github.com/Vishv07/syncfault/internal/adapter/refgood"
 	"github.com/Vishv07/syncfault/internal/fault"
