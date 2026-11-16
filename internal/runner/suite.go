@@ -6,8 +6,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/Vishv07/syncfault/internal/journal"
 	"github.com/Vishv07/syncfault/internal/scenario"
@@ -30,12 +32,36 @@ type SuiteSummary struct {
 	Worst     Verdict
 }
 
+type suiteJob struct {
+	runID   string
+	sc      *scenario.Scenario
+	rawYAML string
+	seed    uint64
+}
+
+// DefaultJobs returns the default sandbox worker concurrency: min(4, max(1, NumCPU/2)) (§8.2).
+func DefaultJobs() int {
+	half := runtime.NumCPU() / 2
+	if half < 1 {
+		half = 1
+	}
+	if half > 4 {
+		return 4
+	}
+	return half
+}
+
 // RunSuite loads all scenarios from ScenariosDir, trims seeds per SuiteName (smoke, nightly, full),
-// executes the matrix, persists each run into Store, and returns the SuiteSummary.
+// executes the matrix across a parallel worker pool of independent sandboxes, persists each run into Store,
+// and returns the SuiteSummary.
 func RunSuite(ctx context.Context, opts SuiteOptions) (*SuiteSummary, error) {
 	if opts.ScenariosDir == "" {
 		opts.ScenariosDir = "scenarios"
 	}
+	if opts.Jobs <= 0 {
+		opts.Jobs = DefaultJobs()
+	}
+
 	entries, err := os.ReadDir(opts.ScenariosDir)
 	if err != nil {
 		return nil, fmt.Errorf("read scenarios dir %s: %w", opts.ScenariosDir, err)
@@ -49,12 +75,8 @@ func RunSuite(ctx context.Context, opts SuiteOptions) (*SuiteSummary, error) {
 	}
 	sort.Strings(files)
 
-	summary := &SuiteSummary{
-		Counts: make(map[Verdict]int),
-		Worst:  VerdictClean,
-	}
-
 	maxSeeds := seedCapForSuite(opts.SuiteName)
+	var jobs []suiteJob
 
 	for _, path := range files {
 		rawBytes, err := os.ReadFile(path)
@@ -69,32 +91,74 @@ func RunSuite(ctx context.Context, opts SuiteOptions) (*SuiteSummary, error) {
 		if maxSeeds > 0 && len(seeds) > maxSeeds {
 			seeds = seeds[:maxSeeds]
 		}
-
 		for _, seed := range seeds {
-			runID := fmt.Sprintf("%s-%s-%d", opts.AdapterName, sc.Name, seed)
-			res, err := ExecuteSingle(ctx, RunConfig{
-				RunID:       runID,
-				AdapterName: opts.AdapterName,
-				Scenario:    sc,
-				Seed:        seed,
+			jobs = append(jobs, suiteJob{
+				runID:   fmt.Sprintf("%s-%s-%d", opts.AdapterName, sc.Name, seed),
+				sc:      sc,
+				rawYAML: string(rawBytes),
+				seed:    seed,
 			})
-			if err != nil {
-				return nil, err
-			}
-			_ = PersistResult(opts.Store, res, string(rawBytes))
-
-			summary.TotalRuns++
-			summary.Counts[res.Verdict]++
-			if res.Verdict.Severity() > summary.Worst.Severity() {
-				summary.Worst = res.Verdict
-			}
-			if opts.Out != nil {
-				fmt.Fprintf(opts.Out, "[%s] %s (seed=%d fault=%s duration=%s)\n",
-					res.Verdict, res.RunID, res.Seed, res.FaultType, res.Duration.Round(1e6))
-			}
 		}
 	}
 
+	summary := &SuiteSummary{
+		Counts: make(map[Verdict]int),
+		Worst:  VerdictClean,
+	}
+
+	jobCh := make(chan suiteJob, len(jobs))
+	for _, jb := range jobs {
+		jobCh <- jb
+	}
+	close(jobCh)
+
+	var mu sync.Mutex
+	var firstErr error
+	var wg sync.WaitGroup
+
+	workerCount := opts.Jobs
+	if workerCount > len(jobs) && len(jobs) > 0 {
+		workerCount = len(jobs)
+	}
+
+	for w := 0; w < workerCount; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for jb := range jobCh {
+				res, err := ExecuteSingle(ctx, RunConfig{
+					RunID:       jb.runID,
+					AdapterName: opts.AdapterName,
+					Scenario:    jb.sc,
+					Seed:        jb.seed,
+				})
+				mu.Lock()
+				if err != nil {
+					if firstErr == nil {
+						firstErr = err
+					}
+					mu.Unlock()
+					return
+				}
+				_ = PersistResult(opts.Store, res, jb.rawYAML)
+				summary.TotalRuns++
+				summary.Counts[res.Verdict]++
+				if res.Verdict.Severity() > summary.Worst.Severity() {
+					summary.Worst = res.Verdict
+				}
+				if opts.Out != nil {
+					fmt.Fprintf(opts.Out, "[%s] %s (seed=%d fault=%s duration=%s)\n",
+						res.Verdict, res.RunID, res.Seed, res.FaultType, res.Duration.Round(1e6))
+				}
+				mu.Unlock()
+			}
+		}()
+	}
+
+	wg.Wait()
+	if firstErr != nil {
+		return nil, firstErr
+	}
 	return summary, nil
 }
 
@@ -124,12 +188,12 @@ func (s *SuiteSummary) ShouldFailCI(failOn string) (bool, int) {
 func seedCapForSuite(suite string) int {
 	switch strings.ToLower(suite) {
 	case "smoke":
-		return 3
+		return 2
 	case "nightly":
-		return 15
+		return 10
 	case "full":
 		return 0
 	default:
-		return 3
+		return 2
 	}
 }
