@@ -3,6 +3,8 @@ package runner
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -163,6 +165,24 @@ func ExecuteSingle(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 	entries := j.Entries()
 	model := oracle.Compute(entries, policy)
 	eval := verify.Evaluate(model, snap, converged)
+
+	// Structured harness log per run (§8.3)
+	if logFile, err := os.Create(filepath.Join(sb.Logs, "harness.json")); err == nil {
+		logger := slog.New(slog.NewJSONHandler(logFile, nil))
+		logger.Info("run_complete",
+			"run_id", cfg.RunID,
+			"adapter", cfg.AdapterName,
+			"scenario", cfg.Scenario.Name,
+			"seed", cfg.Seed,
+			"verdict", string(eval.Verdict),
+			"reason", eval.Reason,
+		)
+		_ = logFile.Close()
+	}
+
+	if eval.Verdict != VerdictClean {
+		_ = target.CollectLogs(filepath.Join(".syncfault-runs", cfg.RunID, "logs"))
+	}
 
 	return &RunResult{
 		RunID:         cfg.RunID,
