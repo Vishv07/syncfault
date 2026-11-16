@@ -1,0 +1,21 @@
+# scenarios/rename_storm_netcut.yaml
+name: rename_storm_netcut
+description: Deep directory rename storm interrupted by network link cut.
+workload:
+  recipe: rename_storm
+  params:
+    depth: 4
+    files: 16
+    file_size: { min: 1KiB, max: 16KiB }
+  sides: [A]
+fault:
+  type: netcut
+  at:
+    op_index: 10
+    jitter_ms: { min: 0, max: 20, seeded: true }
+  params: {}
+expect:
+  conflict_policy: default
+runs:
+  seeds: [1..50]
+  timeout_s: 180

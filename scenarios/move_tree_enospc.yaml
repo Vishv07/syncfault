@@ -1,0 +1,21 @@
+# scenarios/move_tree_enospc.yaml
+name: move_tree_enospc
+description: Directory tree move encounters disk-full quota exhaustion mid-transfer.
+workload:
+  recipe: move_tree
+  params:
+    depth: 3
+    files: 12
+    file_size: { min: 1KiB, max: 16KiB }
+  sides: [A]
+fault:
+  type: enospc
+  at:
+    op_index: 6
+    jitter_ms: { min: 0, max: 10, seeded: true }
+  params: {}
+expect:
+  conflict_policy: default
+runs:
+  seeds: [1..50]
+  timeout_s: 180
