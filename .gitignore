@@ -9,7 +9,7 @@ runs.db
 runs.db-journal
 runs.db-wal
 runs.db-shm
-report/
+/report/
 .syncfault-runs/
 
 # OS & editor files
