@@ -8,6 +8,7 @@ import (
 
 	"github.com/Vishv07/syncfault/internal/doctor"
 	"github.com/Vishv07/syncfault/internal/journal"
+	"github.com/Vishv07/syncfault/internal/report"
 	"github.com/Vishv07/syncfault/internal/runner"
 	"github.com/Vishv07/syncfault/internal/scenario"
 )
@@ -187,6 +188,32 @@ func runCLI(args []string) int {
 		if failed, code := sum.ShouldFailCI(*failOn); failed {
 			return code
 		}
+		return ExitClean
+
+	case "report":
+		fs := flag.NewFlagSet("report", flag.ContinueOnError)
+		dbPath := fs.String("db", "runs.db", "path to runs database")
+		outDir := fs.String("out", "report", "directory for scorecard.md and index.html")
+		if err := fs.Parse(args[1:]); err != nil {
+			return ExitHarnessError
+		}
+		store, err := journal.OpenStore(*dbPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "open store error: %v\n", err)
+			return ExitHarnessError
+		}
+		runs, err := store.ListRuns()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "list runs error: %v\n", err)
+			return ExitHarnessError
+		}
+		summary := report.Summarize(runs)
+		if err := report.GenerateAll(*outDir, summary); err != nil {
+			fmt.Fprintf(os.Stderr, "generate report error: %v\n", err)
+			return ExitHarnessError
+		}
+		fmt.Printf("Generated scorecard (%d runs) in %s/scorecard.md and %s/index.html\n",
+			summary.TotalRuns, *outDir, *outDir)
 		return ExitClean
 
 	case "selfcheck":

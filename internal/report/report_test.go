@@ -44,4 +44,9 @@ func TestSummarizeAndRenderMarkdown(t *testing.T) {
 	if !strings.Contains(md, "Limitations (What Was Not Tested in v1)") {
 		t.Fatal("missing mandatory Limitations section")
 	}
+
+	outDir := t.TempDir()
+	if err := GenerateAll(outDir, data); err != nil {
+		t.Fatalf("GenerateAll failed: %v", err)
+	}
 }
