@@ -17,10 +17,10 @@ import (
 // It inspects sandbox fault markers (fault-netcut.active and fault-netslow.active) on every request
 // so network partitions and latency degradations behave deterministically even without root namespaces.
 type LoopbackRemoteServer struct {
-	sb       *Sandbox
-	listener net.Listener
-	server   *http.Server
-	mu       sync.Mutex
+	sb        *Sandbox
+	listener  net.Listener
+	server    *http.Server
+	mu        sync.Mutex
 	bytesXfer int64
 }
 

@@ -13,12 +13,12 @@ type stallingMockAdapter struct {
 	calls int
 }
 
-func (s *stallingMockAdapter) Name() string                                    { return "stalling" }
-func (s *stallingMockAdapter) Version(_ context.Context) (string, error)       { return "0.1", nil }
+func (s *stallingMockAdapter) Name() string                                      { return "stalling" }
+func (s *stallingMockAdapter) Version(_ context.Context) (string, error)         { return "0.1", nil }
 func (s *stallingMockAdapter) Setup(_ context.Context, _ *sandbox.Sandbox) error { return nil }
-func (s *stallingMockAdapter) PID() int                                        { return 0 }
-func (s *stallingMockAdapter) CollectLogs(_ string) error                      { return nil }
-func (s *stallingMockAdapter) Teardown(_ context.Context) error                { return nil }
+func (s *stallingMockAdapter) PID() int                                          { return 0 }
+func (s *stallingMockAdapter) CollectLogs(_ string) error                        { return nil }
+func (s *stallingMockAdapter) Teardown(_ context.Context) error                  { return nil }
 func (s *stallingMockAdapter) ConflictPolicy() scenario.ConflictPolicy {
 	return scenario.ConflictPolicyDefault
 }
