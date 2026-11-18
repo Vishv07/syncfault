@@ -1,0 +1,29 @@
+name: Nightly Smoke Matrix
+
+on:
+  schedule:
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+
+jobs:
+  nightly-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Build syncfault
+        run: go build -o syncfault ./cmd/syncfault
+
+      - name: Run selfcheck gate
+        run: ./syncfault selfcheck
+
+      - name: Run smoke suite on refgood and generate report
+        run: |
+          ./syncfault suite --adapter refgood --suite smoke --db runs.db
+          ./syncfault report --db runs.db --out report
