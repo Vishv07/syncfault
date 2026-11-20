@@ -50,3 +50,20 @@ func TestOracleIdempotenceUnderFaultFreeSyncCycles(t *testing.T) {
 		t.Fatalf("expected hash_doc to remain acceptable after extra sync cycles")
 	}
 }
+
+func TestOracleTracksCaseOnlyRenameAlternatePath(t *testing.T) {
+	entries := []journal.Entry{
+		{OpIndex: 1, Side: "A", Op: "create", Path: "CaseDir/Report_001.txt", ContentHashAfter: "h1"},
+		{OpIndex: 2, Side: "A", Op: "rename", Path: "CaseDir/Report_001.txt", TargetPath: "CaseDir/report_001.txt", ContentHashBefore: "h1", ContentHashAfter: "h1"},
+	}
+
+	m := Compute(entries, scenario.ConflictPolicyConflictCopy)
+	exp, ok := m.Expectations["CaseDir/report_001.txt"]
+	if !ok {
+		t.Fatal("expected canonical expectation for CaseDir/report_001.txt")
+	}
+	if len(exp.AlternatePaths) != 1 || exp.AlternatePaths[0] != "CaseDir/Report_001.txt" {
+		t.Fatalf("expected CaseDir/Report_001.txt in AlternatePaths, got %v", exp.AlternatePaths)
+	}
+}
+

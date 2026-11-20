@@ -91,6 +91,31 @@ func (a *Adapter) SyncCycle(ctx context.Context) error {
 
 	newBaseline := make(map[string]string)
 
+	// Pass 1: Execute deletions first so case-only renames on case-insensitive filesystems
+	// (such as macOS APFS) never unlink a newly written uppercase/lowercase sibling.
+	for _, rel := range allPaths {
+		baseHash, inBase := baseline[rel]
+		entryA, inA := treeA[rel]
+		entryB, inB := treeB[rel]
+
+		if inA && !inB && inBase && entryA.hash == baseHash {
+			if err := a.removePath("A", rel); err != nil {
+				return err
+			}
+			if err := a.removePath("remote", rel); err != nil {
+				return err
+			}
+		} else if !inA && inB && inBase && entryB.hash == baseHash {
+			if err := a.removePath("B", rel); err != nil {
+				return err
+			}
+			if err := a.removePath("remote", rel); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Pass 2: Execute creations, updates, and conflict-copy preservation.
 	for _, rel := range allPaths {
 		baseHash, inBase := baseline[rel]
 		entryA, inA := treeA[rel]
@@ -146,43 +171,31 @@ func (a *Adapter) SyncCycle(ctx context.Context) error {
 
 		case inA && !inB:
 			if inBase && entryA.hash == baseHash {
-				// Deleted on B; propagate delete to A and remote
-				if err := a.removePath("A", rel); err != nil {
-					return err
-				}
-				if err := a.removePath("remote", rel); err != nil {
-					return err
-				}
-			} else {
-				// Created on A (or edited on A while deleted on B: preserve A)
-				if err := a.atomicWrite("B", rel, entryA.data); err != nil {
-					return err
-				}
-				if err := a.atomicWrite("remote", rel, entryA.data); err != nil {
-					return err
-				}
-				newBaseline[rel] = entryA.hash
+				// Already removed in Pass 1
+				continue
 			}
+			// Created on A (or edited on A while deleted on B: preserve A)
+			if err := a.atomicWrite("B", rel, entryA.data); err != nil {
+				return err
+			}
+			if err := a.atomicWrite("remote", rel, entryA.data); err != nil {
+				return err
+			}
+			newBaseline[rel] = entryA.hash
 
 		case !inA && inB:
 			if inBase && entryB.hash == baseHash {
-				// Deleted on A; propagate delete to B and remote
-				if err := a.removePath("B", rel); err != nil {
-					return err
-				}
-				if err := a.removePath("remote", rel); err != nil {
-					return err
-				}
-			} else {
-				// Created on B (or edited on B while deleted on A: preserve B)
-				if err := a.atomicWrite("A", rel, entryB.data); err != nil {
-					return err
-				}
-				if err := a.atomicWrite("remote", rel, entryB.data); err != nil {
-					return err
-				}
-				newBaseline[rel] = entryB.hash
+				// Already removed in Pass 1
+				continue
 			}
+			// Created on B (or edited on B while deleted on A: preserve B)
+			if err := a.atomicWrite("A", rel, entryB.data); err != nil {
+				return err
+			}
+			if err := a.atomicWrite("remote", rel, entryB.data); err != nil {
+				return err
+			}
+			newBaseline[rel] = entryB.hash
 		}
 	}
 
@@ -257,6 +270,10 @@ func (a *Adapter) atomicWrite(side, rel string, data []byte) error {
 	if err != nil {
 		return err
 	}
+	dir := filepath.Dir(dst)
+	base := filepath.Base(dst)
+	ensureExactCaseFilename(dir, base)
+
 	if existing, err := os.ReadFile(dst); err == nil && bytes.Equal(existing, data) {
 		return nil
 	}
@@ -271,11 +288,10 @@ func (a *Adapter) atomicWrite(side, rel string, data []byte) error {
 		}
 	}
 
-	dir := filepath.Dir(dst)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	tmpPath := filepath.Join(dir, ".tmp-syncfault-"+filepath.Base(dst))
+	tmpPath := filepath.Join(dir, ".tmp-syncfault-"+base)
 	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return err
@@ -350,3 +366,18 @@ func conflictCopyPath(rel string) string {
 	base := strings.TrimSuffix(rel, ext)
 	return base + ".sync-conflict-B" + ext
 }
+
+func ensureExactCaseFilename(dir, wantBase string) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		if name != wantBase && strings.EqualFold(name, wantBase) {
+			_ = os.Rename(filepath.Join(dir, name), filepath.Join(dir, wantBase))
+			return
+		}
+	}
+}
+

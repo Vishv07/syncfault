@@ -137,8 +137,8 @@ func Compute(entries []journal.Entry, policy scenario.ConflictPolicy) Model {
 					newExp.RequiredHashes = []string{e.ContentHashAfter}
 				}
 			}
-			if m.FaultFired {
-				newExp.RenamedAtFault = true
+			if m.FaultFired || (strings.EqualFold(p, target) && p != target) {
+				newExp.RenamedAtFault = m.FaultFired
 				newExp.AlternatePaths = uniqueStrings(append(newExp.AlternatePaths, p))
 			}
 			delete(sideLatest[side], p)
