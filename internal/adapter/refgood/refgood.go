@@ -251,12 +251,18 @@ func scanReplica(root string) (map[string]fileSnapshot, error) {
 		if err != nil {
 			return err
 		}
-		rel = filepath.ToSlash(rel)
+		rawRel := filepath.ToSlash(rel)
+		normRel := scenario.NormalizeNFC(rawRel)
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
-		out[rel] = fileSnapshot{
+		if rawRel != normRel {
+			normAbs := filepath.Join(root, filepath.FromSlash(normRel))
+			_ = os.Remove(path)
+			_ = os.WriteFile(normAbs, data, 0o644)
+		}
+		out[normRel] = fileSnapshot{
 			hash: scenario.HashBytes(data),
 			data: data,
 		}

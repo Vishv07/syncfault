@@ -285,12 +285,17 @@ func walkDir(root string) (map[string]string, error) {
 		if err != nil {
 			return err
 		}
-		rel = filepath.ToSlash(rel)
+		rel = scenario.NormalizeNFC(filepath.ToSlash(rel))
 		data, err := os.ReadFile(path)
 		if err != nil {
 			return err
 		}
-		out[rel] = scenario.HashBytes(data)
+		h := scenario.HashBytes(data)
+		if _, exists := out[rel]; exists {
+			out[rel+".dup"] = h
+		} else {
+			out[rel] = h
+		}
 		return nil
 	})
 	return out, err

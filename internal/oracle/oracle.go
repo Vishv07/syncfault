@@ -74,15 +74,24 @@ func Compute(entries []journal.Entry, policy scenario.ConflictPolicy) Model {
 		if side == "" {
 			side = "A"
 		}
-		p := filepath.ToSlash(e.Path)
-		target := filepath.ToSlash(e.TargetPath)
+		rawP := filepath.ToSlash(e.Path)
+		rawTarget := filepath.ToSlash(e.TargetPath)
+		p := scenario.NormalizeNFC(rawP)
+		target := scenario.NormalizeNFC(rawTarget)
 
 		switch e.Op {
 		case string(scenario.OpCreate), string(scenario.OpEdit):
 			recordHash(p, e.ContentHashBefore)
 			recordHash(p, e.ContentHashAfter)
+			if rawP != p {
+				recordHash(rawP, e.ContentHashBefore)
+				recordHash(rawP, e.ContentHashAfter)
+			}
 
 			exp := getOrCreateExpectation(m.Expectations, p)
+			if rawP != p {
+				exp.AlternatePaths = uniqueStrings(append(exp.AlternatePaths, rawP))
+			}
 			exp.Deleted = false
 			if e.ContentHashAfter != "" {
 				exp.AcceptableHash[e.ContentHashAfter] = true

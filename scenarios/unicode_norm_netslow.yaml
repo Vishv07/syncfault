@@ -1,0 +1,19 @@
+name: unicode_norm_netslow
+description: Cross-platform NFC and NFD UTF-8 filename mutations under network latency.
+workload:
+  recipe: unicode_norm
+  sides: [A]
+  params:
+    files: 6
+    file_size: { min: 512B, max: 8KiB }
+fault:
+  type: netslow
+  at:
+    op_index: 8
+    jitter_ms: { min: 5, max: 30, seeded: true }
+  params: { delay_ms: 40, loss_pct: 5 }
+expect:
+  conflict_policy: default
+runs:
+  seeds: [1..10]
+  timeout_s: 60
