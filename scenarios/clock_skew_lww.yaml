@@ -1,0 +1,19 @@
+name: clock_skew_lww
+description: Concurrent edits under -300s clock skew and 2s FAT32 mtime granularity rounding.
+workload:
+  recipe: concurrent_edit
+  sides: [A, B]
+  params:
+    files: 6
+    file_size: { min: 512B, max: 8KiB }
+fault:
+  type: clock_skew
+  at:
+    op_index: 8
+    jitter_ms: { min: 5, max: 25, seeded: true }
+  params: { side: B, skew_s: -300, granularity_s: 2 }
+expect:
+  conflict_policy: lww
+runs:
+  seeds: [1..10]
+  timeout_s: 60

@@ -1,0 +1,19 @@
+name: volatile_write_concurrent
+description: In-flight volatile file mutation during concurrent edits to detect non-atomic torn writes.
+workload:
+  recipe: concurrent_edit
+  sides: [A, B]
+  params:
+    files: 6
+    file_size: { min: 1KiB, max: 16KiB }
+fault:
+  type: volatile_write
+  at:
+    op_index: 9
+    jitter_ms: { min: 5, max: 35, seeded: true }
+  params: { side: A }
+expect:
+  conflict_policy: default
+runs:
+  seeds: [1..10]
+  timeout_s: 60
