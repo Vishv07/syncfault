@@ -1,0 +1,18 @@
+name: symlink_swap_sigkill
+description: Release directory swap and active manifest rotation interrupted by SIGKILL.
+workload:
+  recipe: symlink_swap
+  sides: [A]
+  params:
+    files: 6
+    file_size: { min: 512B, max: 8KiB }
+fault:
+  type: sigkill
+  at:
+    op_index: 9
+    jitter_ms: { min: 5, max: 35, seeded: true }
+expect:
+  conflict_policy: default
+runs:
+  seeds: [1..10]
+  timeout_s: 60
