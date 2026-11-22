@@ -1,0 +1,20 @@
+name: state_corrupt_recovery
+description: Corrupt local sync state cache mid-run to verify protection against false mass deletions.
+workload:
+  recipe: basic_crud
+  sides: [A]
+  params:
+    depth: 2
+    files: 8
+    file_size: { min: 512B, max: 8KiB }
+fault:
+  type: state_corrupt
+  at:
+    op_index: 6
+    jitter_ms: { min: 5, max: 25, seeded: true }
+  params: { mode: garbage }
+expect:
+  conflict_policy: default
+runs:
+  seeds: [1..10]
+  timeout_s: 60
