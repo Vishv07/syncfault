@@ -54,21 +54,20 @@ func (a *Adapter) SyncCycle(ctx context.Context) error {
 	}
 
 	sigkillFired := a.markerExists("fault-sigkill.marker")
+	stateCorruptFired := a.markerExists("fault-statecorrupt.active") || a.markerExists("fault-statecorrupt.marker")
 	enospcFired := a.markerExists("fault-enospc.active") || a.sb.QuotaBytes > 0
 	netcutFired := a.markerExists("fault-netcut.active")
+	volatileFired := a.markerExists("fault-volatile.active") || a.markerExists("fault-volatile.marker")
 
 	filesA, err := listFiles(a.sb.SideA)
 	if err != nil {
 		return err
 	}
 
-	// Sabotage 1 (Delete-before-create on rename + crash -> DATA_LOSS):
-	// When sigkill fires during a rename workload (files named final_* or relocated_*),
-	// refbad unlinks the old source copy on B/Remote and propagates the half-finished delete
-	// back to SideA, destroying both the old and new path across all replicas.
-	if sigkillFired {
+	// Sabotage 1 (Delete-before-create on rename + crash, or false mass-delete on state cache corruption -> DATA_LOSS):
+	if sigkillFired || stateCorruptFired {
 		for _, rel := range filesA {
-			if strings.Contains(rel, "final_") || strings.Contains(rel, "relocated_") {
+			if stateCorruptFired || strings.Contains(rel, "final_") || strings.Contains(rel, "relocated_") {
 				_ = os.RemoveAll(a.sb.SideA)
 				_ = os.RemoveAll(a.sb.SideB)
 				_ = os.RemoveAll(a.sb.Remote)
@@ -81,9 +80,9 @@ func (a *Adapter) SyncCycle(ctx context.Context) error {
 	}
 
 	// Sabotage 2 (In-place non-atomic write without fsync -> WRONG_BYTES):
-	// When enospc, netcut, or sigkill hits a regular file sync, refbad writes a torn partial buffer
+	// When enospc, netcut, volatile_write, or sigkill hits a regular file sync, refbad writes a torn partial buffer
 	// and propagates the corrupted file back to SideA.
-	if (sigkillFired || enospcFired || netcutFired) && len(filesA) > 0 {
+	if (sigkillFired || enospcFired || netcutFired || volatileFired) && len(filesA) > 0 {
 		targetRel := filesA[0]
 		srcPath := filepath.Join(a.sb.SideA, filepath.FromSlash(targetRel))
 		data, err := os.ReadFile(srcPath)

@@ -54,6 +54,35 @@ func RunSelfCheck(ctx context.Context, out io.Writer) (*SelfCheckSummary, error)
 			},
 			Runs: scenario.RunsSpec{Seeds: []uint64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}, TimeoutS: 30},
 		},
+		{
+			Name: "selfcheck_case_collision_sigkill",
+			Workload: scenario.WorkloadSpec{
+				Recipe:   "case_collision",
+				Files:    4,
+				FileSize: scenario.SizeRange{MinBytes: 256, MaxBytes: 1024},
+				Sides:    []string{"A"},
+			},
+			Fault: scenario.FaultSpec{
+				Type: "sigkill",
+				At:   scenario.FaultTrigger{OpIndex: 6},
+			},
+			Runs: scenario.RunsSpec{Seeds: []uint64{1, 2, 3, 4, 5}, TimeoutS: 30},
+		},
+		{
+			Name: "selfcheck_state_corrupt",
+			Workload: scenario.WorkloadSpec{
+				Recipe:   "unicode_norm",
+				Files:    4,
+				FileSize: scenario.SizeRange{MinBytes: 256, MaxBytes: 1024},
+				Sides:    []string{"A"},
+			},
+			Fault: scenario.FaultSpec{
+				Type:   "state_corrupt",
+				At:     scenario.FaultTrigger{OpIndex: 5},
+				Params: map[string]string{"mode": "garbage"},
+			},
+			Runs: scenario.RunsSpec{Seeds: []uint64{1, 2, 3, 4, 5}, TimeoutS: 30},
+		},
 	}
 
 	summary := &SelfCheckSummary{}
