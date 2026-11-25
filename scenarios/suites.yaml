@@ -1,12 +1,12 @@
 # scenarios/suites.yaml
-# Defines the v1 smoke, nightly, and full scenario matrix trims (Appendix B).
+# Defines the smoke, nightly, and full scenario matrix trims (Appendix B).
 suites:
   smoke:
     seeds_per_scenario: 2
-    description: Fast CI gate covering all 7 recipes across baseline and fault anchors.
+    description: Fast CI gate covering all 10 recipes and 8 fault classes.
   nightly:
     seeds_per_scenario: 10
-    description: Extended nightly verification matrix across fault classes.
+    description: Extended nightly verification matrix across all 17 scenarios.
   full:
     seeds_per_scenario: 50
-    description: Full published scorecard corpus (~900 runs per target).
+    description: Full published scorecard corpus (850+ runs per target).
