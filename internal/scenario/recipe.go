@@ -3,6 +3,7 @@ package scenario
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 )
 
 // OpKind identifies the type of operation emitted by a workload recipe.
@@ -137,4 +138,14 @@ func expandBasicCRUD(spec WorkloadSpec, stream *Stream) ([]PlannedOp, error) {
 	ops = append(ops, PlannedOp{Side: side, Kind: OpSyncCycle})
 
 	return ops, nil
+}
+
+// RecipeNames returns the sorted names of all registered workload recipes.
+func RecipeNames() []string {
+	out := make([]string, 0, len(recipeRegistry))
+	for name := range recipeRegistry {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }

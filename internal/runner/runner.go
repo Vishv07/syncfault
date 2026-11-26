@@ -40,6 +40,9 @@ type RunConfig struct {
 	Scenario    *scenario.Scenario
 	Seed        uint64
 	KeepSandbox bool
+	// Target optionally overrides the registry lookup by AdapterName with a ready adapter instance
+	// (used by the Go SDK and the cmd adapter).
+	Target adapter.Target
 }
 
 // RunResult captures the outcome of a single run.
@@ -85,9 +88,13 @@ func ExecuteSingle(ctx context.Context, cfg RunConfig) (*RunResult, error) {
 		_ = sb.Teardown()
 	}()
 
-	target, err := adapter.New(cfg.AdapterName)
-	if err != nil {
-		return nil, err
+	target := cfg.Target
+	if target == nil {
+		var terr error
+		target, terr = adapter.New(cfg.AdapterName)
+		if terr != nil {
+			return nil, terr
+		}
 	}
 	defer func() {
 		_ = target.Teardown(context.Background())

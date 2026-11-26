@@ -3,6 +3,7 @@ package adapter
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/Vishv07/syncfault/internal/sandbox"
 	"github.com/Vishv07/syncfault/internal/scenario"
@@ -44,4 +45,14 @@ func New(name string) (Target, error) {
 		return nil, fmt.Errorf("unknown target adapter %q", name)
 	}
 	return fn(), nil
+}
+
+// Names returns the sorted names of all registered adapters.
+func Names() []string {
+	out := make([]string, 0, len(registry))
+	for name := range registry {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }

@@ -3,6 +3,7 @@ package fault
 import (
 	"context"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 
@@ -136,4 +137,14 @@ func New(faultType string, params map[string]string, seed uint64) (Injector, err
 		return nil, fmt.Errorf("unknown fault injector %q", faultType)
 	}
 	return fn(params, seed), nil
+}
+
+// Names returns the sorted names of all registered fault injectors, plus "none".
+func Names() []string {
+	out := []string{"none"}
+	for name := range injectorRegistry {
+		out = append(out, name)
+	}
+	sort.Strings(out)
+	return out
 }
