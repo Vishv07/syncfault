@@ -66,4 +66,3 @@ func TestOracleTracksCaseOnlyRenameAlternatePath(t *testing.T) {
 		t.Fatalf("expected CaseDir/Report_001.txt in AlternatePaths, got %v", exp.AlternatePaths)
 	}
 }
-

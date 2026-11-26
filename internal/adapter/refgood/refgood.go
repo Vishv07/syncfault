@@ -386,4 +386,3 @@ func ensureExactCaseFilename(dir, wantBase string) {
 		}
 	}
 }
-
