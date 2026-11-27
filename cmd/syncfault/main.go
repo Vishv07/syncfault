@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/Vishv07/syncfault/internal/adapter"
+	"github.com/Vishv07/syncfault/internal/adapter/cmdexec"
 	"github.com/Vishv07/syncfault/internal/doctor"
 	"github.com/Vishv07/syncfault/internal/journal"
 	"github.com/Vishv07/syncfault/internal/report"
@@ -61,7 +63,13 @@ func runCLI(args []string) int {
 		seedFlag := fs.Uint64("seed", 0, "optional single seed override")
 		keep := fs.Bool("keep", false, "keep sandbox directory after run")
 		dbPath := fs.String("db", "runs.db", "path to SQLite runs database")
+		syncCmd := fs.String("sync-cmd", "", "shell command run once per sync cycle (with --adapter cmd)")
 		if err := fs.Parse(args[1:]); err != nil {
+			return ExitHarnessError
+		}
+		factory, err := targetFactory(*adapterName, *syncCmd)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
 			return ExitHarnessError
 		}
 		if *scenarioPath == "" {
@@ -85,12 +93,16 @@ func runCLI(args []string) int {
 		}
 		worst := 0
 		for _, seed := range seeds {
-			res, err := runner.ExecuteSingle(context.Background(), runner.RunConfig{
+			cfg := runner.RunConfig{
 				AdapterName: *adapterName,
 				Scenario:    sc,
 				Seed:        seed,
 				KeepSandbox: *keep,
-			})
+			}
+			if factory != nil {
+				cfg.Target = factory()
+			}
+			res, err := runner.ExecuteSingle(context.Background(), cfg)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "harness error (seed %d): %v\n", seed, err)
 				return ExitHarnessError
@@ -139,7 +151,13 @@ func runCLI(args []string) int {
 		suiteName := fs.String("suite", "smoke", "suite size (smoke|nightly|full)")
 		dbPath := fs.String("db", "runs.db", "path to runs database")
 		jobs := fs.Int("jobs", 2, "worker concurrency")
+		syncCmd := fs.String("sync-cmd", "", "shell command run once per sync cycle (with --adapter cmd)")
 		if err := fs.Parse(args[1:]); err != nil {
+			return ExitHarnessError
+		}
+		factory, ferr := targetFactory(*adapterName, *syncCmd)
+		if ferr != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", ferr)
 			return ExitHarnessError
 		}
 		store, err := journal.OpenStore(*dbPath)
@@ -153,6 +171,8 @@ func runCLI(args []string) int {
 			Store:       store,
 			Jobs:        *jobs,
 			Out:         os.Stdout,
+
+			TargetFactory: factory,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "suite error: %v\n", err)
@@ -167,7 +187,13 @@ func runCLI(args []string) int {
 		suiteName := fs.String("suite", "smoke", "suite size (smoke|nightly|full)")
 		failOn := fs.String("fail-on", "data_loss,wrong_bytes", "comma-separated verdicts that fail CI")
 		dbPath := fs.String("db", "runs.db", "path to runs database")
+		syncCmd := fs.String("sync-cmd", "", "shell command run once per sync cycle (with --adapter cmd)")
 		if err := fs.Parse(args[1:]); err != nil {
+			return ExitHarnessError
+		}
+		factory, ferr := targetFactory(*adapterName, *syncCmd)
+		if ferr != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", ferr)
 			return ExitHarnessError
 		}
 		store, err := journal.OpenStore(*dbPath)
@@ -180,6 +206,8 @@ func runCLI(args []string) int {
 			SuiteName:   *suiteName,
 			Store:       store,
 			Out:         os.Stdout,
+
+			TargetFactory: factory,
 		})
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ci suite error: %v\n", err)
@@ -235,6 +263,20 @@ func runCLI(args []string) int {
 		printUsage()
 		return ExitHarnessError
 	}
+}
+
+// targetFactory returns a per-run adapter builder for --adapter cmd, or nil for registered adapters.
+func targetFactory(adapterName, syncCmd string) (func() adapter.Target, error) {
+	if adapterName != "cmd" {
+		if syncCmd != "" {
+			return nil, fmt.Errorf("--sync-cmd requires --adapter cmd")
+		}
+		return nil, nil
+	}
+	if err := cmdexec.Validate(syncCmd); err != nil {
+		return nil, fmt.Errorf("--adapter cmd needs a valid --sync-cmd: %w", err)
+	}
+	return func() adapter.Target { return cmdexec.New(syncCmd) }, nil
 }
 
 func printUsage() {

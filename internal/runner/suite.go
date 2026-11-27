@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Vishv07/syncfault/internal/adapter"
 	"github.com/Vishv07/syncfault/internal/journal"
 	"github.com/Vishv07/syncfault/internal/scenario"
 )
@@ -23,6 +24,8 @@ type SuiteOptions struct {
 	Store        *journal.Store
 	Jobs         int
 	Out          io.Writer
+	// TargetFactory optionally builds a fresh adapter per run instead of looking up AdapterName.
+	TargetFactory func() adapter.Target
 }
 
 // SuiteSummary aggregates verdicts across all runs in a suite.
@@ -126,12 +129,16 @@ func RunSuite(ctx context.Context, opts SuiteOptions) (*SuiteSummary, error) {
 		go func() {
 			defer wg.Done()
 			for jb := range jobCh {
-				res, err := ExecuteSingle(ctx, RunConfig{
+				cfg := RunConfig{
 					RunID:       jb.runID,
 					AdapterName: opts.AdapterName,
 					Scenario:    jb.sc,
 					Seed:        jb.seed,
-				})
+				}
+				if opts.TargetFactory != nil {
+					cfg.Target = opts.TargetFactory()
+				}
+				res, err := ExecuteSingle(ctx, cfg)
 				mu.Lock()
 				if err != nil {
 					if firstErr == nil {
