@@ -225,7 +225,20 @@ func Evaluate(model oracle.Model, snap StateSnapshot, converged bool) Result {
 		}
 	}
 
-	// 3. Check extra/unexpected duplicate artifacts
+	// 3a. Without a fault, a path the journal deleted or renamed away must not come back.
+	// (Faults can legitimately leave either state, so the rule only applies to clean runs.)
+	if !model.FaultFired {
+		for _, rep := range replicas {
+			for _, p := range sortedKeys(rep.tree) {
+				if model.RemovedPaths[p] && !oracle.IsConflictOrTrashPath(p) {
+					duplicateReasons = append(duplicateReasons,
+						fmt.Sprintf("path %s was removed in the journal but still exists on %s", p, rep.name))
+				}
+			}
+		}
+	}
+
+	// 3b. Check extra/unexpected duplicate artifacts
 	for _, rep := range replicas {
 		for _, p := range sortedKeys(rep.tree) {
 			if isUnacceptableDuplicateName(p) {

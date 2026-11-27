@@ -66,3 +66,23 @@ func TestOracleTracksCaseOnlyRenameAlternatePath(t *testing.T) {
 		t.Fatalf("expected CaseDir/Report_001.txt in AlternatePaths, got %v", exp.AlternatePaths)
 	}
 }
+
+func TestOracleTracksRemovedPathsUntilRecreated(t *testing.T) {
+	entries := []journal.Entry{
+		{OpIndex: 1, Side: "A", Op: "create", Path: "a.txt", ContentHashAfter: "h1"},
+		{OpIndex: 2, Side: "A", Op: "create", Path: "b.txt", ContentHashAfter: "h2"},
+		{OpIndex: 3, Side: "A", Op: "delete", Path: "a.txt", ContentHashBefore: "h1"},
+		{OpIndex: 4, Side: "A", Op: "rename", Path: "b.txt", TargetPath: "c.txt", ContentHashBefore: "h2", ContentHashAfter: "h2"},
+		{OpIndex: 5, Side: "A", Op: "create", Path: "a.txt", ContentHashAfter: "h3"},
+	}
+	m := Compute(entries, scenario.ConflictPolicyConflictCopy)
+	if m.RemovedPaths["a.txt"] {
+		t.Fatal("a.txt was recreated, so it must not stay in RemovedPaths")
+	}
+	if !m.RemovedPaths["b.txt"] {
+		t.Fatal("expected renamed-away b.txt in RemovedPaths")
+	}
+	if m.RemovedPaths["c.txt"] {
+		t.Fatal("rename target c.txt must not be in RemovedPaths")
+	}
+}

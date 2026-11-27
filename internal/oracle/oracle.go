@@ -27,6 +27,9 @@ type Model struct {
 	Expectations     map[string]*FileExpectation
 	LegitimateHashes map[string]map[string]bool
 	AllKnownHashes   map[string]bool
+	// RemovedPaths holds paths the journal deleted or renamed away and never recreated.
+	// With no fault fired, none of them may exist on any replica at the end of a run.
+	RemovedPaths map[string]bool
 }
 
 // Compute derives the acceptable end-state lattice purely from the journal and effective ConflictPolicy.
@@ -40,6 +43,7 @@ func Compute(entries []journal.Entry, policy scenario.ConflictPolicy) Model {
 		Expectations:     make(map[string]*FileExpectation),
 		LegitimateHashes: make(map[string]map[string]bool),
 		AllKnownHashes:   make(map[string]bool),
+		RemovedPaths:     make(map[string]bool),
 	}
 
 	for _, e := range entries {
@@ -81,6 +85,7 @@ func Compute(entries []journal.Entry, policy scenario.ConflictPolicy) Model {
 
 		switch e.Op {
 		case string(scenario.OpCreate), string(scenario.OpEdit):
+			delete(m.RemovedPaths, p)
 			recordHash(p, e.ContentHashBefore)
 			recordHash(p, e.ContentHashAfter)
 			if rawP != p {
@@ -130,6 +135,8 @@ func Compute(entries []journal.Entry, policy scenario.ConflictPolicy) Model {
 
 			oldExp, hadOld := m.Expectations[p]
 			delete(m.Expectations, p)
+			m.RemovedPaths[p] = true
+			delete(m.RemovedPaths, target)
 
 			newExp := getOrCreateExpectation(m.Expectations, target)
 			newExp.Deleted = false
@@ -156,6 +163,7 @@ func Compute(entries []journal.Entry, policy scenario.ConflictPolicy) Model {
 			}
 
 		case string(scenario.OpDelete):
+			m.RemovedPaths[p] = true
 			recordHash(p, e.ContentHashBefore)
 			if exp, ok := m.Expectations[p]; ok {
 				exp.Deleted = true
