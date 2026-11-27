@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/Vishv07/syncfault/internal/adapter"
 	"github.com/Vishv07/syncfault/internal/adapter/cmdexec"
@@ -13,6 +15,7 @@ import (
 	"github.com/Vishv07/syncfault/internal/report"
 	"github.com/Vishv07/syncfault/internal/runner"
 	"github.com/Vishv07/syncfault/internal/scenario"
+	"github.com/Vishv07/syncfault/internal/server"
 )
 
 const (
@@ -244,6 +247,27 @@ func runCLI(args []string) int {
 			summary.TotalRuns, *outDir, *outDir)
 		return ExitClean
 
+	case "serve":
+		fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+		addr := fs.String("addr", "127.0.0.1:8475", "listen address (loopback only)")
+		scenariosDir := fs.String("scenarios", "scenarios", "directory used to resolve scenario_name")
+		allowCmd := fs.Bool("allow-cmd", false, "let API requests run a shell command through the cmd adapter")
+		maxConcurrent := fs.Int("max-concurrent", 2, "maximum simultaneous runs")
+		if err := fs.Parse(args[1:]); err != nil {
+			return ExitHarnessError
+		}
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if err := server.Serve(ctx, *addr, server.Options{
+			ScenariosDir:  *scenariosDir,
+			AllowCmd:      *allowCmd,
+			MaxConcurrent: *maxConcurrent,
+		}, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "serve error: %v\n", err)
+			return ExitHarnessError
+		}
+		return ExitClean
+
 	case "selfcheck":
 		sum, err := runner.RunSelfCheck(context.Background(), os.Stdout)
 		if err != nil || !sum.Passed {
@@ -289,5 +313,6 @@ Commands:
   suite       Run a named scenario suite (smoke, nightly, full)
   report      Generate Markdown and HTML scorecard reports from runs.db
   ci          Run a suite and exit with the worst verdict severity code
+  serve       Start the local JSON HTTP API (loopback only)
   selfcheck   Validate the harness against refgood and refbad reference syncs`)
 }
